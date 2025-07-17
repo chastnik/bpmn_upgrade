@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/BPMN20/2010/04/1.0" 
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:activiti="http://activiti.org/bpmn"
+             targetNamespace="http://www.activiti.org/bpmn"
+             id="definitions"
+             xsi:schemaLocation="http://www.omg.org/BPMN20/2010/04/1.0 
+                                 http://www.omg.org/spec/BPMN/20100524/BPMN20.xsd">
+
+  <process id="simpleProcess" name="Simple Process Example" isExecutable="true">
+    
+    <startEvent id="startEvent1" name="Start">
+      <outgoing>flow1</outgoing>
+    </startEvent>
+    
+    <sequenceFlow id="flow1" sourceRef="startEvent1" targetRef="userTask1"/>
+    
+    <userTask id="userTask1" name="User Task" activiti:assignee="user">
+      <incoming>flow1</incoming>
+      <outgoing>flow2</outgoing>
+    </userTask>
+    
+    <sequenceFlow id="flow2" sourceRef="userTask1" targetRef="exclusiveGateway1"/>
+    
+    <exclusiveGateway id="exclusiveGateway1" name="Decision Gateway">
+      <incoming>flow2</incoming>
+      <outgoing>flow3</outgoing>
+      <outgoing>flow4</outgoing>
+    </exclusiveGateway>
+    
+    <sequenceFlow id="flow3" sourceRef="exclusiveGateway1" targetRef="serviceTask1">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+    
+    <sequenceFlow id="flow4" sourceRef="exclusiveGateway1" targetRef="endEvent2">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+    
+    <serviceTask id="serviceTask1" name="Service Task" activiti:class="com.example.ServiceTask">
+      <incoming>flow3</incoming>
+      <outgoing>flow5</outgoing>
+    </serviceTask>
+    
+    <sequenceFlow id="flow5" sourceRef="serviceTask1" targetRef="endEvent1"/>
+    
+    <endEvent id="endEvent1" name="End - Approved">
+      <incoming>flow5</incoming>
+    </endEvent>
+    
+    <endEvent id="endEvent2" name="End - Rejected">
+      <incoming>flow4</incoming>
+    </endEvent>
+    
+  </process>
+  
+</definitions> 

@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/BPMN20/2009/10/1.0" 
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:activiti="http://activiti.org/bpmn"
+             targetNamespace="http://www.activiti.org/bpmn"
+             id="complexProcess"
+             xsi:schemaLocation="http://www.omg.org/BPMN20/2009/10/1.0 
+                                 http://www.omg.org/spec/BPMN/20100524/BPMN20.xsd">
+
+  <process id="orderProcess" name="Order Processing" isExecutable="true">
+    
+    <!-- Стартовое событие -->
+    <startEvent id="orderReceived" name="Order Received">
+      <outgoing>flow1</outgoing>
+    </startEvent>
+    
+    <sequenceFlow id="flow1" sourceRef="orderReceived" targetRef="validateOrder"/>
+    
+    <!-- Задача валидации -->
+    <userTask id="validateOrder" name="Validate Order" activiti:assignee="validator">
+      <incoming>flow1</incoming>
+      <outgoing>flow2</outgoing>
+    </userTask>
+    
+    <sequenceFlow id="flow2" sourceRef="validateOrder" targetRef="orderValidGateway"/>
+    
+    <!-- Шлюз проверки валидности -->
+    <exclusiveGateway id="orderValidGateway" name="Order Valid?">
+      <incoming>flow2</incoming>
+      <outgoing>flow3</outgoing>
+      <outgoing>flow4</outgoing>
+    </exclusiveGateway>
+    
+    <!-- Поток для валидных заказов -->
+    <sequenceFlow id="flow3" name="Valid" sourceRef="orderValidGateway" targetRef="processOrderSubProcess">
+      <conditionExpression xsi:type="tFormalExpression">${orderValid == true}</conditionExpression>
+    </sequenceFlow>
+    
+    <!-- Поток для невалидных заказов -->
+    <sequenceFlow id="flow4" name="Invalid" sourceRef="orderValidGateway" targetRef="rejectOrder">
+      <conditionExpression xsi:type="tFormalExpression">${orderValid == false}</conditionExpression>
+    </sequenceFlow>
+    
+    <!-- Подпроцесс обработки заказа -->
+    <subprocess id="processOrderSubProcess" name="Process Order">
+      <incoming>flow3</incoming>
+      <outgoing>flow5</outgoing>
+      
+      <!-- Внутренние элементы подпроцесса -->
+      <startEvent id="subStart" name="Sub Start">
+        <outgoing>subFlow1</outgoing>
+      </startEvent>
+      
+      <sequenceFlow id="subFlow1" sourceRef="subStart" targetRef="checkInventory"/>
+      
+      <serviceTask id="checkInventory" name="Check Inventory" activiti:class="com.example.InventoryService">
+        <incoming>subFlow1</incoming>
+        <outgoing>subFlow2</outgoing>
+      </serviceTask>
+      
+      <sequenceFlow id="subFlow2" sourceRef="checkInventory" targetRef="inventoryGateway"/>
+      
+      <exclusiveGateway id="inventoryGateway" name="In Stock?">
+        <incoming>subFlow2</incoming>
+        <outgoing>subFlow3</outgoing>
+        <outgoing>subFlow4</outgoing>
+      </exclusiveGateway>
+      
+      <sequenceFlow id="subFlow3" name="In Stock" sourceRef="inventoryGateway" targetRef="prepareShipment">
+        <conditionExpression xsi:type="tFormalExpression">${inStock == true}</conditionExpression>
+      </sequenceFlow>
+      
+      <sequenceFlow id="subFlow4" name="Out of Stock" sourceRef="inventoryGateway" targetRef="orderBacklog">
+        <conditionExpression xsi:type="tFormalExpression">${inStock == false}</conditionExpression>
+      </sequenceFlow>
+      
+      <userTask id="prepareShipment" name="Prepare Shipment" activiti:assignee="warehouse">
+        <incoming>subFlow3</incoming>
+        <outgoing>subFlow5</outgoing>
+      </userTask>
+      
+      <userTask id="orderBacklog" name="Add to Backlog" activiti:assignee="manager">
+        <incoming>subFlow4</incoming>
+        <outgoing>subFlow6</outgoing>
+      </userTask>
+      
+      <sequenceFlow id="subFlow5" sourceRef="prepareShipment" targetRef="subMerge"/>
+      <sequenceFlow id="subFlow6" sourceRef="orderBacklog" targetRef="subMerge"/>
+      
+      <exclusiveGateway id="subMerge" name="Merge">
+        <incoming>subFlow5</incoming>
+        <incoming>subFlow6</incoming>
+        <outgoing>subFlow7</outgoing>
+      </exclusiveGateway>
+      
+      <sequenceFlow id="subFlow7" sourceRef="subMerge" targetRef="subEnd"/>
+      
+      <endEvent id="subEnd" name="Sub End">
+        <incoming>subFlow7</incoming>
+      </endEvent>
+      
+    </subprocess>
+    
+    <sequenceFlow id="flow5" sourceRef="processOrderSubProcess" targetRef="parallelGateway1"/>
+    
+    <!-- Параллельный шлюз для разделения потоков -->
+    <parallelGateway id="parallelGateway1" name="Split">
+      <incoming>flow5</incoming>
+      <outgoing>flow6</outgoing>
+      <outgoing>flow7</outgoing>
+    </parallelGateway>
+    
+    <!-- Отправка подтверждения -->
+    <sequenceFlow id="flow6" sourceRef="parallelGateway1" targetRef="sendConfirmation"/>
+    
+    <serviceTask id="sendConfirmation" name="Send Confirmation" activiti:class="com.example.NotificationService">
+      <incoming>flow6</incoming>
+      <outgoing>flow8</outgoing>
+    </serviceTask>
+    
+    <!-- Обновление учетных записей -->
+    <sequenceFlow id="flow7" sourceRef="parallelGateway1" targetRef="updateAccounts"/>
+    
+    <scriptTask id="updateAccounts" name="Update Accounts" activiti:language="javascript">
+      <incoming>flow7</incoming>
+      <outgoing>flow9</outgoing>
+      <script>
+        // Обновление учетных записей
+        accountService.updateOrderStatus(orderId, "PROCESSED");
+      </script>
+    </scriptTask>
+    
+    <sequenceFlow id="flow8" sourceRef="sendConfirmation" targetRef="parallelGateway2"/>
+    <sequenceFlow id="flow9" sourceRef="updateAccounts" targetRef="parallelGateway2"/>
+    
+    <!-- Параллельный шлюз для слияния потоков -->
+    <parallelGateway id="parallelGateway2" name="Merge">
+      <incoming>flow8</incoming>
+      <incoming>flow9</incoming>
+      <outgoing>flow10</outgoing>
+    </parallelGateway>
+    
+    <sequenceFlow id="flow10" sourceRef="parallelGateway2" targetRef="orderCompleted"/>
+    
+    <!-- Задача отклонения заказа -->
+    <userTask id="rejectOrder" name="Reject Order" activiti:assignee="validator">
+      <incoming>flow4</incoming>
+      <outgoing>flow11</outgoing>
+    </userTask>
+    
+    <sequenceFlow id="flow11" sourceRef="rejectOrder" targetRef="orderRejected"/>
+    
+    <!-- Конечные события -->
+    <endEvent id="orderCompleted" name="Order Completed">
+      <incoming>flow10</incoming>
+    </endEvent>
+    
+    <endEvent id="orderRejected" name="Order Rejected">
+      <incoming>flow11</incoming>
+    </endEvent>
+    
+    <!-- Граничное событие на подпроцессе -->
+    <boundaryEvent id="timeoutEvent" name="Timeout" attachedToRef="processOrderSubProcess">
+      <outgoing>flow12</outgoing>
+      <timerEventDefinition>
+        <timeDuration>P1D</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    
+    <sequenceFlow id="flow12" sourceRef="timeoutEvent" targetRef="handleTimeout"/>
+    
+    <userTask id="handleTimeout" name="Handle Timeout" activiti:assignee="manager">
+      <incoming>flow12</incoming>
+      <outgoing>flow13</outgoing>
+    </userTask>
+    
+    <sequenceFlow id="flow13" sourceRef="handleTimeout" targetRef="orderTimeout"/>
+    
+    <endEvent id="orderTimeout" name="Order Timeout">
+      <incoming>flow13</incoming>
+    </endEvent>
+    
+  </process>
+  
+</definitions> 

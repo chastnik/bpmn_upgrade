@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Конвертер BPMN версий</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 90%;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .upload-section {
+            margin-bottom: 30px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+        
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #e9ecef;
+        }
+        
+        .upload-area.dragover {
+            border-color: #28a745;
+            background: #d4edda;
+        }
+        
+        .upload-icon {
+            font-size: 3em;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        
+        .upload-text {
+            font-size: 1.2em;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .upload-subtext {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .file-info {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .file-name {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .file-size {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            font-weight: 500;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        .progress {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #cce7ff;
+            color: #004085;
+            border: 1px solid #b8daff;
+        }
+        
+        .validation-result {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .validation-result h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .validation-item {
+            margin-bottom: 5px;
+            color: #666;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔄 Конвертер BPMN</h1>
+            <p>Преобразование BPMN схем из версии 1.8/1.9 в версию 2.0</p>
+        </div>
+        
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">Перетащите файл сюда или нажмите для выбора</div>
+                <div class="upload-subtext">Поддерживаются файлы .xml и .bpmn</div>
+                <input type="file" id="fileInput" class="file-input" accept=".xml,.bpmn">
+            </div>
+            
+            <div class="file-info" id="fileInfo">
+                <div class="file-name" id="fileName"></div>
+                <div class="file-size" id="fileSize"></div>
+            </div>
+            
+            <div class="validation-result" id="validationResult">
+                <h3>Информация о файле:</h3>
+                <div id="validationDetails"></div>
+            </div>
+        </div>
+        
+        <div class="buttons">
+            <button class="btn btn-secondary" id="validateBtn" disabled>Проверить файл</button>
+            <button class="btn btn-primary" id="convertBtn" disabled>Конвертировать</button>
+        </div>
+        
+        <div class="progress" id="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        
+        <div class="status" id="status"></div>
+        
+        <div class="footer">
+            <p>© 2024 BPMN Converter - Простая конвертация BPMN схем</p>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const validateBtn = document.getElementById('validateBtn');
+        const convertBtn = document.getElementById('convertBtn');
+        const progress = document.getElementById('progress');
+        const progressBar = document.getElementById('progressBar');
+        const status = document.getElementById('status');
+        const validationResult = document.getElementById('validationResult');
+        const validationDetails = document.getElementById('validationDetails');
+        
+        let selectedFile = null;
+        const API_BASE = 'http://localhost:5001/api';
+        
+        // Обработка клика по области загрузки
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        // Обработка выбора файла
+        fileInput.addEventListener('change', (e) => {
+            handleFileSelection(e.target.files[0]);
+        });
+        
+        // Обработка drag & drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFileSelection(e.dataTransfer.files[0]);
+        });
+        
+        function handleFileSelection(file) {
+            if (!file) return;
+            
+            // Проверка типа файла
+            if (!file.name.toLowerCase().endsWith('.xml') && !file.name.toLowerCase().endsWith('.bpmn')) {
+                showStatus('error', 'Пожалуйста, выберите файл с расширением .xml или .bpmn');
+                return;
+            }
+            
+            selectedFile = file;
+            fileName.textContent = file.name;
+            fileSize.textContent = `Размер: ${(file.size / 1024).toFixed(2)} KB`;
+            fileInfo.style.display = 'block';
+            
+            validateBtn.disabled = false;
+            convertBtn.disabled = false;
+            
+            hideStatus();
+            validationResult.style.display = 'none';
+        }
+        
+        // Валидация файла
+        validateBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            
+            try {
+                showProgress();
+                updateProgress(30);
+                
+                const response = await fetch(`${API_BASE}/validate`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                updateProgress(100);
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showValidationResult(result);
+                    if (result.valid) {
+                        showStatus('success', 'Файл прошел валидацию успешно');
+                    } else {
+                        showStatus('error', result.message || 'Файл не прошел валидацию');
+                    }
+                } else {
+                    showStatus('error', result.error || 'Ошибка при валидации файла');
+                }
+            } catch (error) {
+                showStatus('error', 'Ошибка подключения к серверу');
+            } finally {
+                hideProgress();
+            }
+        });
+        
+        // Конвертация файла
+        convertBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            
+            try {
+                showProgress();
+                updateProgress(50);
+                
+                const response = await fetch(`${API_BASE}/convert`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                updateProgress(100);
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `converted_${selectedFile.name}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    showStatus('success', 'Файл успешно конвертирован и загружен');
+                } else {
+                    const error = await response.json();
+                    showStatus('error', error.error || 'Ошибка при конвертации файла');
+                }
+            } catch (error) {
+                showStatus('error', 'Ошибка подключения к серверу');
+            } finally {
+                hideProgress();
+            }
+        });
+        
+        function showValidationResult(result) {
+            let details = '';
+            
+            if (result.valid) {
+                details += `<div class="validation-item">✅ Версия BPMN: ${result.version}</div>`;
+                details += `<div class="validation-item">📊 Количество процессов: ${result.processes}</div>`;
+                details += `<div class="validation-item">🔧 Всего элементов: ${result.elements}</div>`;
+            } else {
+                details += `<div class="validation-item">❌ Ошибка: ${result.error}</div>`;
+            }
+            
+            validationDetails.innerHTML = details;
+            validationResult.style.display = 'block';
+        }
+        
+        function showStatus(type, message) {
+            status.className = `status ${type}`;
+            status.textContent = message;
+            status.style.display = 'block';
+            
+            // Автоматически скрыть сообщение через 5 секунд
+            setTimeout(hideStatus, 5000);
+        }
+        
+        function hideStatus() {
+            status.style.display = 'none';
+        }
+        
+        function showProgress() {
+            progress.style.display = 'block';
+            progressBar.style.width = '0%';
+        }
+        
+        function updateProgress(percent) {
+            progressBar.style.width = `${percent}%`;
+        }
+        
+        function hideProgress() {
+            setTimeout(() => {
+                progress.style.display = 'none';
+            }, 500);
+        }
+        
+        // Проверка соединения с сервером при загрузке
+        fetch(`${API_BASE}/health`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'OK') {
+                    showStatus('info', 'Сервер готов к работе');
+                }
+            })
+            .catch(() => {
+                showStatus('error', 'Не удается подключиться к серверу. Убедитесь, что бэкенд запущен.');
+            });
+    </script>
+</body>
+</html> 
