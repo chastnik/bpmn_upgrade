@@ -7,7 +7,7 @@ ENV/
 # Папки для загрузки и вывода
 backend/uploads/
 backend/outputs/
-
+examples/
 # Python
 __pycache__/
 *.py[cod]

@@ -58,15 +58,29 @@ class BPMNConverter:
             namespace = root.tag.split('}')[0].strip('{') if '}' in root.tag else ''
             version = self._detect_bpmn_version(namespace, root)
             
-            # Проверяем структуру
-            processes = root.findall('.//process') or root.findall('.//{*}process')
+            # Проверяем структуру - ищем процессы в разных форматах
+            processes = []
+            
+            # Стандартные BPMN процессы
+            processes.extend(root.findall('.//process'))
+            processes.extend(root.findall('.//{*}process'))
+            
+            # Нестандартные форматы
+            processes.extend(root.findall('.//Process'))
+            processes.extend(root.findall('.//BusinessProcessDiagram'))
+            processes.extend(root.findall('.//{*}Process'))
+            processes.extend(root.findall('.//{*}BusinessProcessDiagram'))
+            
+            # Считаем все элементы
+            total_elements = len(root.findall('.//*'))
             
             return {
                 'valid': True,
                 'version': version,
                 'processes': len(processes),
-                'elements': len(root.findall('.//*')),
-                'message': f'Файл валиден. Обнаружена версия BPMN {version}'
+                'elements': total_elements,
+                'message': f'Файл валиден. Обнаружена версия BPMN {version}',
+                'format': 'Custom' if 'Custom' in version else 'Standard'
             }
         except ET.ParseError as e:
             return {
@@ -83,17 +97,38 @@ class BPMNConverter:
     
     def _detect_bpmn_version(self, namespace: str, root: ET.Element) -> str:
         """Определение версии BPMN по namespace и структуре"""
-        if 'bpmn20' in namespace or '2010/04' in namespace:
+        # Стандартные namespace версии
+        if 'bpmn20' in namespace or '2010/04' in namespace or '20100524' in namespace:
             return '2.0'
         elif 'bpmn19' in namespace or '2009/10' in namespace:
             return '1.9'
         elif 'bpmn18' in namespace or '2008/06' in namespace:
             return '1.8'
-        else:
-            # Пробуем определить по атрибутам
+        
+        # Проверяем нестандартные форматы
+        # Для файлов с корневым элементом <BPMN BPMNVersion="X.X">
+        if root.tag == 'BPMN' and root.get('BPMNVersion'):
+            return root.get('BPMNVersion')
+        
+        # Для файлов с корневым элементом <bpmn:definitions>
+        if root.tag.endswith('definitions'):
             if root.get('targetNamespace'):
                 return '1.8/1.9'
-            return 'unknown'
+        
+        # Проверяем атрибуты версии в корневом элементе
+        version_attrs = ['version', 'Version', 'BPMNVersion', 'bpmnVersion']
+        for attr in version_attrs:
+            if root.get(attr):
+                return root.get(attr)
+        
+        # Пробуем определить по дочерним элементам
+        for child in root:
+            if 'BusinessProcessDiagram' in child.tag:
+                return '1.9 (Custom)'
+            elif 'process' in child.tag.lower():
+                return '1.8/1.9'
+        
+        return 'unknown'
     
     def convert_to_bpmn20(self, input_path: str, output_path: str) -> bool:
         """Конвертация BPMN файла в версию 2.0"""
@@ -114,11 +149,14 @@ class BPMNConverter:
             # Создаем новый BPMN 2.0 документ
             bpmn20_root = self._create_bpmn20_structure()
             
-            # Конвертируем процессы
-            self._convert_processes(root, bpmn20_root)
-            
-            # Конвертируем диаграммы (если есть)
-            self._convert_diagrams(root, bpmn20_root)
+            # Проверяем тип файла и конвертируем соответственно
+            if 'Custom' in version or root.tag == 'BPMN':
+                # Нестандартный формат - специальная обработка
+                self._convert_custom_format(root, bpmn20_root)
+            else:
+                # Стандартный формат
+                self._convert_processes(root, bpmn20_root)
+                self._convert_diagrams(root, bpmn20_root)
             
             # Сохраняем результат
             self._save_formatted_xml(bpmn20_root, output_path)
@@ -248,6 +286,119 @@ class BPMNConverter:
                 if old_plane.get('bpmnElement'):
                     new_plane.set('bpmnElement', old_plane.get('bpmnElement'))
     
+    def _convert_custom_format(self, old_root: ET.Element, new_root: ET.Element):
+        """Конвертация нестандартного формата BPMN"""
+        # Ищем BusinessProcessDiagram элементы
+        diagrams = old_root.findall('.//BusinessProcessDiagram')
+        
+        for diagram in diagrams:
+            # Создаем новый процесс
+            new_process = ET.SubElement(new_root, 'process')
+            
+            # Получаем ID и имя из диаграммы
+            process_id = diagram.get('id', 'process_1').strip('()')
+            process_name = ''
+            
+            # Ищем имя процесса
+            name_elem = diagram.find('Name')
+            if name_elem is not None and name_elem.text:
+                process_name = name_elem.text
+            
+            new_process.set('id', process_id)
+            new_process.set('isExecutable', 'true')
+            if process_name:
+                new_process.set('name', process_name)
+            
+            # Ищем Process элементы внутри диаграммы
+            processes = diagram.findall('.//Process')
+            
+            for process in processes:
+                # Конвертируем элементы процесса
+                self._convert_custom_process_elements(process, new_process)
+            
+            # Если процессов нет, создаем минимальный процесс
+            if not processes:
+                # Создаем простое стартовое событие
+                start_event = ET.SubElement(new_process, 'startEvent')
+                start_event.set('id', 'start_1')
+                start_event.set('name', 'Start')
+                
+                # Создаем конечное событие
+                end_event = ET.SubElement(new_process, 'endEvent')
+                end_event.set('id', 'end_1')
+                end_event.set('name', 'End')
+    
+    def _convert_custom_process_elements(self, old_process: ET.Element, new_process: ET.Element):
+        """Конвертация элементов из нестандартного формата"""
+        # Обрабатываем различные типы элементов
+        
+        # Обрабатываем Tasks
+        tasks = old_process.findall('.//Tasks')
+        for task_group in tasks:
+            for task in task_group:
+                if task.tag != 'Tasks':
+                    new_task = ET.SubElement(new_process, 'task')
+                    task_id = task.get('id', '').strip('()')
+                    if task_id:
+                        new_task.set('id', task_id)
+                    
+                    # Ищем имя задачи
+                    name_elem = task.find('Name')
+                    if name_elem is not None and name_elem.text:
+                        new_task.set('name', name_elem.text)
+        
+        # Обрабатываем SubProcesses
+        subprocesses = old_process.findall('.//SubProcesses')
+        for subprocess_group in subprocesses:
+            for subprocess in subprocess_group:
+                if subprocess.tag == 'SubProcess':
+                    new_subprocess = ET.SubElement(new_process, 'subProcess')
+                    subprocess_id = subprocess.get('id', '').strip('()')
+                    if subprocess_id:
+                        new_subprocess.set('id', subprocess_id)
+                    
+                    # Ищем имя подпроцесса
+                    name_elem = subprocess.find('Name')
+                    if name_elem is not None and name_elem.text:
+                        new_subprocess.set('name', name_elem.text)
+        
+        # Обрабатываем Events
+        events = old_process.findall('.//Events')
+        for event_group in events:
+            for event in event_group:
+                if event.tag != 'Events':
+                    # Определяем тип события по имени тега
+                    event_type = 'intermediateThrowEvent'
+                    if 'Start' in event.tag:
+                        event_type = 'startEvent'
+                    elif 'End' in event.tag:
+                        event_type = 'endEvent'
+                    
+                    new_event = ET.SubElement(new_process, event_type)
+                    event_id = event.get('id', '').strip('()')
+                    if event_id:
+                        new_event.set('id', event_id)
+                    
+                    # Ищем имя события
+                    name_elem = event.find('Name')
+                    if name_elem is not None and name_elem.text:
+                        new_event.set('name', name_elem.text)
+        
+        # Обрабатываем Gateways
+        gateways = old_process.findall('.//Gateways')
+        for gateway_group in gateways:
+            for gateway in gateway_group:
+                if gateway.tag != 'Gateways':
+                    new_gateway = ET.SubElement(new_process, 'exclusiveGateway')
+                    gateway_id = gateway.get('id', '').strip('()')
+                    if gateway_id:
+                        new_gateway.set('id', gateway_id)
+                    
+                    # Ищем имя шлюза
+                    name_elem = gateway.find('Name')
+                    if name_elem is not None and name_elem.text:
+                        new_gateway.set('name', name_elem.text)
+
     def _save_formatted_xml(self, root: ET.Element, output_path: str):
         """Сохранение XML с форматированием"""
         # Преобразуем в строку
